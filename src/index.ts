@@ -1,5 +1,6 @@
-import Client from 'node-radius-client'
 import nodeRadiusUtils from 'node-radius-utils'
+import { Client, RetryableError } from './client'
+import { logger } from './logger'
 
 const dics = nodeRadiusUtils.dictionaries.rfc2865
 
@@ -9,22 +10,19 @@ async function radius(
   password: string,
   secret: string,
 ) {
-  const client = new Client({
+  const client = Client.create({
     host: hostname,
     hostPort: 1812,
     secret,
-    timeout: 2_000,
-    retries: 1,
+    timeout: 1_000,
+    retries: 2,
     dictionaries: [dics.file],
   })
 
   try {
     const idk = await client.accessRequest({
-      secret,
-      attributes: [
-        [dics.attributes.USER_NAME, username],
-        [dics.attributes.USER_PASSWORD, password],
-      ],
+      [dics.attributes.USER_NAME!]: username,
+      [dics.attributes.USER_PASSWORD!]: password,
     })
 
     console.log(idk)
@@ -32,6 +30,10 @@ async function radius(
     return idk
   }
   catch (err: unknown) {
+    if (err instanceof RetryableError) {
+      return logger.log(err.message)
+    }
+
     console.error(err)
   }
 };
