@@ -8,6 +8,12 @@ import { logger } from './logger'
 
 type SendArgs = Pick<EncodeArgs, 'code' | 'attributes'>
 
+interface TrySendReturn {
+  code: string
+  identifier: number
+  attributes: any
+}
+
 export class RetryableError extends Error {
   public retryable: boolean
 
@@ -24,7 +30,7 @@ function getEphemeralPort() {
   return Math.floor(Math.random() * (end - begin + 1) + begin)
 }
 
-const rfc2865 = dictionaries.rfc2865
+// const rfc2865 = dictionaries.rfc2865
 
 const optionsSchema = z.object({
   host: z.string().trim(),
@@ -66,7 +72,7 @@ export class Client {
     }
   }
 
-  public async accessRequest(attributes: SendArgs['attributes']) {
+  public async accessRequestMessage(attributes: SendArgs['attributes']) {
     const freeRadiusPacketType = dictionaries.freeradius_internal.values.PACKET_TYPE
 
     if (freeRadiusPacketType === undefined) {
@@ -78,25 +84,47 @@ export class Client {
       attributes,
     })
 
-    if (response.code === freeRadiusPacketType.ACCESS_REJECT) {
-      const replyMessageAttr = rfc2865.attributes.REPLY_MESSAGE
-
-      if (replyMessageAttr === undefined) {
-        throw new Error('TODO: No reply message attribute for ACCESS_REJECT')
-      }
-
-      logger.log('ACCESS_REJECT')
+    if (response.code === freeRadiusPacketType.ACCESS_ACCEPT) {
       console.log(response)
-
-      const error = new Error(response.attributes[replyMessageAttr])
-
-      throw error
+      console.log(response.attributes.State)
+      return logger.log('Authentication successful | ACCESS_ACCEPT')
     }
 
-    return response
+    if (response.code === freeRadiusPacketType.ACCESS_REJECT) {
+      console.log(response)
+      console.log(response.attributes.State)
+      return logger.log('Authentication not successful | ACCESS_REJECT')
+    }
+
+    if (response.code === freeRadiusPacketType.PASSWORD_REJECT) {
+      console.log(response.attributes.State)
+      return logger.log('Authentication not successful | PASSWORD_REJECT')
+    }
+
+    if (response.code === freeRadiusPacketType.PASSWORD_EXPIRED) {
+      console.log(response.attributes.State)
+      return logger.log('Authentication not successful | PASSWORD_EXPIRED')
+    }
+
+    const msg = 'Should not get here'
+    logger.log(msg)
+    console.log(response)
+    throw new Error(msg)
+
+    // if (response.code === freeRadiusPacketType.ACCESS_REJECT) {
+    //   const replyMessageAttr = rfc2865.attributes.REPLY_MESSAGE
+
+    //   if (replyMessageAttr === undefined) {
+    //     throw new Error('TODO: No reply message attribute for ACCESS_REJECT')
+    //   }
+
+    //   const error = new Error(response.attributes[replyMessageAttr])
+
+    //   throw error
+    // }
   }
 
-  public async send({ attributes, code }: SendArgs): Promise<any> {
+  public async send({ attributes, code }: SendArgs) {
     const encodedPacket = radius.encode({
       code,
       attributes,
@@ -104,37 +132,23 @@ export class Client {
       add_message_authenticator: true,
     })
 
-    let numTries = 0
+    try {
+      const response = await this.trySend(encodedPacket)
 
-    // TODO: think this system better
-    while (numTries <= this.options.retries!) {
-      try {
-        const response = await this.trySend(encodedPacket)
-
-        return response
-      }
-      catch (err: unknown) {
-        if (!(err instanceof Error)) {
-          return console.error('not an error', err)
-        }
-
-        if (!(err instanceof RetryableError)) {
-          throw err
-        }
-
-        numTries += 1
-        if (numTries > this.options.retries!) {
-          err.message += ` (${numTries - 1} retries)`
-
-          throw err
-        }
-      }
+      return response
     }
+    catch (err: unknown) {
+      if (!(err instanceof Error)) {
+        const error = new Error(`not an error: ${err}`)
 
-    throw new Error('Error sending request.')
+        throw error
+      }
+
+      throw err
+    }
   }
 
-  public trySend(encodedPacket: Buffer): Promise<any> {
+  public trySend(encodedPacket: Buffer): Promise<TrySendReturn> {
     return new Promise((resolve, reject) => {
       const {
         host,

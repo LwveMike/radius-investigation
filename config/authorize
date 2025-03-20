@@ -1,0 +1,37 @@
+DEFAULT	Framed-Protocol == PPP
+	Framed-Protocol = PPP,
+	Framed-Compression = Van-Jacobson-TCP-IP
+
+DEFAULT	Hint == "CSLIP"
+	Framed-Protocol = SLIP,
+	Framed-Compression = Van-Jacobson-TCP-IP
+
+DEFAULT	Hint == "SLIP"
+	Framed-Protocol = SLIP
+
+
+nfa-user	Cleartext-Password := "Trewq54321"
+    Service-Type = Authenticate-Only,
+    Reply-Message := "Hello, %{User-Name}"
+
+
+nfa-admin        Cleartext-Password := "Trewq54321"
+    Service-Type = Administrative-User,
+    Reply-Message := "Hello, %{User-Name}"
+
+
+
+disabled-user	Auth-Type := Reject
+	Cleartext-Password := "Trewq54321",
+	Reply-Message = "Your account has been disabled."
+
+
+expired-user	Expiration := "23 Sep 2004"
+	Cleartext-Password := "Trewq54321",
+	Reply-Message := "Your account has expired on %{control:Expiration} go to noction.com for extending!"
+
+nfa-chap	CHAP-Password := "Trewq54321"
+    Service-Type = Authenticate-Only,
+    Reply-Message := "Hello, chapitto %{User-Name}"
+
+
